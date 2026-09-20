@@ -123,12 +123,15 @@ def run(*args, cwd=None, env=None, input=None, timeout=120):
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ForgeError(f"command could not complete: {Path(str(args[0])).name}") from exc
     if result.returncode:
-        error = (result.stderr or result.stdout)[-2000:]
+        # A runtime warning on stderr must not hide a structured stdout error.
+        # Redact before bounding the message, otherwise truncation can expose
+        # the unmatched tail of a credential crossing the size boundary.
+        error = "\n".join(value for value in (result.stderr, result.stdout) if value)
         for key, value in (env or os.environ).items():
             if value and re.search(r"(TOKEN|PASS|PASSWORD|SECRET|KEY)$", key):
                 error = error.replace(value, "[redacted]")
         error = re.sub(r"(https?://)[^/\s@]+@", r"\1[redacted]@", error)
-        raise ForgeError(f"{Path(str(args[0])).name} exited {result.returncode}: {error.strip()}")
+        raise ForgeError(f"{Path(str(args[0])).name} exited {result.returncode}: {error[-2000:].strip()}")
     return result.stdout
 
 
@@ -160,7 +163,7 @@ class Gitea:
         self.opener = build_opener(NoRedirect())
 
     def request(self, method, suffix, data=None):
-        if not suffix.startswith("/") or ".." in suffix.split("/"):
+        if (suffix and not suffix.startswith("/")) or ".." in suffix.split("/"):
             raise ForgeError("invalid repository API path")
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
         token = os.environ.get("GITEA_TOKEN")
@@ -191,10 +194,16 @@ class Gitea:
         raise ForgeError("Gitea pagination safety limit reached")
 
     def repository(self):
-        result = self.request("GET", "/")
-        if result.get("full_name", "").casefold() != f"{self.owner}/{self.repo}".casefold():
+        result = self.request("GET", "")
+        if not isinstance(result, dict):
+            raise ForgeError("Gitea repository response was not an object")
+        full_name = result.get("full_name")
+        clone_url = result.get("clone_url")
+        if not isinstance(full_name, str) or not isinstance(clone_url, str):
+            raise ForgeError("Gitea repository identity was incomplete")
+        if full_name.casefold() != f"{self.owner}/{self.repo}".casefold():
             raise ForgeError("Gitea response names another repository")
-        if result.get("clone_url", "").rstrip("/").removesuffix(".git") != self.url:
+        if clone_url.rstrip("/").removesuffix(".git") != self.url:
             raise ForgeError("Gitea clone URL differs from the configured repository")
         return result
 
