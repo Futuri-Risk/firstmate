@@ -59,7 +59,18 @@ jobs:
           chmod +x "$dest/acpx/dist/cli.js"
           echo "$dest/tools" >> "$GITHUB_PATH"
           echo "$dest/tasks/node_modules/.bin" >> "$GITHUB_PATH"
-          echo "LD_LIBRARY_PATH=$dest/lib" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$dest/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo "FM_TEST_ZCODE_ENTRY=$dest/zcode/dist/index.js" >> "$GITHUB_ENV"
+      - name: Inspect installed dependency contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tasks-axi add --help
+          tasks-axi show --help
+          printf '\n--- PR provider and wake boundaries ---\n'
+          grep -nE 'gitlab|github|validated|fm_wake_append|enqueue|push.*wake' bin/fm-pr-lib.sh bin/fm-pr-merge.sh bin/fm-pr-poll.sh bin/fm-wake-lib.sh | tail -100
+          printf '\n--- Existing behavioral test subjects ---\n'
+          find tests -maxdepth 1 -type f | grep -E 'spawn|relaunch|recovery|dispatch|quota|pr-check|pr-poll|treehouse' | sort
       - name: Syntax and behavior
         shell: bash
         run: |
