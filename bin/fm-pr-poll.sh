@@ -65,6 +65,14 @@ case "$provider" in
     state=$(gh pr view "$url" --json state -q .state 2>/dev/null) || exit 0
     [ "$state" = MERGED ] && printf '%s\n' merged
     ;;
+  gitea)
+    helper=${FM_PR_GITEA_HELPER:-}
+    if [ -z "$helper" ]; then helper="$(dirname -- "$0")/fm-gitea-pr.py"; fi
+    [ -f "$helper" ] || exit 0
+    record=$(python3 "$helper" record --url "$url" 2>/dev/null) || exit 0
+    printf '%s' "$record" | jq -e --arg host "$host" --arg path "$path" --arg number "$number"       '.host == $host and .path == $path and (.number|tostring) == $number and .merged == true and .state == "closed"' >/dev/null 2>&1 || exit 0
+    printf 'merged\n'
+    ;;
   gitlab)
     [ "${#host}" -ge 1 ] && [ "${#host}" -le 253 ] || exit 0
     [ "$host" != github.com ] || exit 0

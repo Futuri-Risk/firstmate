@@ -93,6 +93,16 @@ FM_PR_RETIRE_RECEIPT_IDENTITY=
 FM_PR_RECORD_STATE=
 FM_PR_RECORD_MERGED=
 FM_PR_POLL_RETIREMENT_REJECTED=
+# A tracked helper path, never loaded from a mutable PR sidecar.
+FM_PR_GITEA_HELPER="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/fm-gitea-pr.py"
+export FM_PR_GITEA_HELPER
+
+fm_pr_gitea_read_record() {  # <canonical-url>
+  local record
+  record=$(python3 "$FM_PR_GITEA_HELPER" record --url "$1") || return 1
+  FM_PR_RECORD_STATE=$(printf '%s' "$record" | jq -er '.state') || return 1
+  FM_PR_RECORD_MERGED=$(printf '%s' "$record" | jq -r '.merged') || return 1
+}
 
 fm_task_id_path_safe() {
   local id=${1-}
@@ -195,6 +205,18 @@ fm_pr_url_parse() {
     FM_PR_NUMBER=${BASH_REMATCH[3]}
     return 0
   fi
+  # Only explicitly configured Gitea repositories may receive credentials.
+  case "$raw" in
+    */pulls/*)
+      local gitea_identity
+      gitea_identity=$(python3 "$FM_PR_GITEA_HELPER" identity --url "$raw" 2>/dev/null) || return 1
+      gitea_identity=$(printf '%s' "$gitea_identity" | jq -er '[.host,.path,(.number|tostring),.owner,.repo] | @tsv') || return 1
+      IFS=$'	' read -r FM_PR_HOST FM_PR_PATH FM_PR_NUMBER FM_PR_OWNER FM_PR_REPO <<< "$gitea_identity"
+      FM_PR_PROVIDER=gitea
+      FM_PR_URL=$raw
+      return 0
+      ;;
+  esac
   # The path class contains "/" and "-", so this match is greedy to the last
   # "/-/merge_requests/". Any earlier separator therefore lands inside the
   # captured path, where the reserved "-" segment is refused.

@@ -111,7 +111,7 @@ def merge(api, identity, expected, method):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("identity", "snapshot", "verify", "merge"))
+    parser.add_argument("command", choices=("identity", "record", "snapshot", "verify", "merge"))
     parser.add_argument("--url", required=True)
     parser.add_argument("--expected-head")
     parser.add_argument("--method", choices=("merge", "squash", "rebase"), default="squash")
@@ -120,6 +120,8 @@ def main():
         api, identity = identify(args.url)
         if args.command == "identity":
             value = identity
+        elif args.command == "record":
+            value = snapshot(api, identity, checks=False)
         elif args.command == "snapshot":
             value = snapshot(api, identity)
         elif args.command == "verify":

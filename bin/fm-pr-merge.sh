@@ -381,7 +381,7 @@ fi
 # The recorded head is read before bin/fm-pr-check.sh rewrites the metadata,
 # because that script re-records pr= and drops a pr_head= it cannot resolve.
 RECORDED_HEAD=
-if [ "$PROVIDER" = gitlab ]; then
+if [ "$PROVIDER" = gitlab ] || [ "$PROVIDER" = gitea ]; then
   RECORDED_HEAD=$(grep '^pr_head=' "$META" | tail -1 | cut -d= -f2- || true)
 fi
 
@@ -1141,6 +1141,29 @@ require_released_captain_hold || exit 1
 # stale-owner recovery can release the record for archive or replacement and
 # the orphaned forge child can still merge on the lapsed away authority.
 case "$PROVIDER" in
+  gitea)
+    [ -n "$RECORDED_HEAD" ] || { echo 'error: Gitea merge requires the recorded validated head' >&2; exit 1; }
+    gitea_method=squash
+    for gitea_arg in "$@"; do
+      case "$gitea_arg" in
+        --squash) gitea_method=squash ;;
+        --merge) gitea_method=merge ;;
+        --rebase) gitea_method=rebase ;;
+        *) echo 'error: unsupported Gitea merge argument; no protection bypass is implemented' >&2; exit 1 ;;
+      esac
+    done
+    gitea_record=$(python3 "$SCRIPT_DIR/fm-gitea-pr.py" verify --url "$URL" --expected-head "$RECORDED_HEAD") || exit 1
+    FM_PR_MERGE_HEAD=$(printf '%s' "$gitea_record" | jq -er '.head') || exit 1
+    hold_away_record_for_merge || exit 1
+    away_status=0
+    require_current_away_authority || away_status=$?
+    [ "$away_status" -eq 0 ] || exit "$away_status"
+    python3 "$SCRIPT_DIR/fm-gitea-pr.py" merge --url "$URL" --expected-head "$FM_PR_MERGE_HEAD" --method "$gitea_method" || exit 1
+    persist_accepted_merge_authority || exit 1
+    fm_afk_contract_lock_release || true
+    fm_lock_release "$MERGE_CONTROL_LOCK" || true
+    MERGE_CONTROL_LOCK=
+    ;;
   github)
     merge_output=
     merge_args=()

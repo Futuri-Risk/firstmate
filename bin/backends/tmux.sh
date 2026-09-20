@@ -246,11 +246,25 @@ fm_backend_tmux_current_command() {  # <target>
 # absent target from the client's active window rather than failing, so callers
 # must confirm exact window membership first, exactly as the classifier below
 # does, or they will describe some other pane entirely.
+fm_backend_tmux_foreground_rows() {  # <tty>
+  case "$(uname -s)" in
+    MSYS*|CYGWIN*) python3 "$FM_BACKEND_LIB_DIR/fm-msys-foreground.py" "$1" ;;
+    *) LC_ALL=C ps -t "${1#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null ;;
+  esac
+}
+
+fm_backend_tmux_process_args() {  # <pid>
+  case "$(uname -s)" in
+    MSYS*|CYGWIN*) tr '\0' ' ' < "/proc/$1/cmdline" ;;
+    *) LC_ALL=C ps -p "$1" -o args= 2>/dev/null ;;
+  esac
+}
+
 fm_backend_tmux_foreground_comms() {  # <target>
   local target=$1 tty pid pgid tpgid comm
   tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
   [ -n "$tty" ] || return 0
-  LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null \
+  fm_backend_tmux_foreground_rows "$tty" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
@@ -265,11 +279,11 @@ fm_backend_tmux_foreground_args() {  # <target>
   local target=$1 tty pid pgid tpgid comm args
   tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
   [ -n "$tty" ] || return 0
-  LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null \
+  fm_backend_tmux_foreground_rows "$tty" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
-        args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || continue
+        args=$(fm_backend_tmux_process_args "$pid") || continue
         [ -n "$args" ] && printf '%s\n' "$args"
       done
 }
@@ -278,7 +292,7 @@ fm_backend_tmux_foreground_pids() {  # <target>
   local target=$1 tty pid pgid tpgid comm
   tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
   [ -n "$tty" ] || return 0
-  LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null \
+  fm_backend_tmux_foreground_rows "$tty" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
@@ -290,13 +304,21 @@ fm_backend_tmux_foreground_argv0s() {  # <target>
   local target=$1 tty pid pgid tpgid comm args argv0
   tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
   [ -n "$tty" ] || return 0
-  LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null \
+  fm_backend_tmux_foreground_rows "$tty" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
-        args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || continue
-        args=${args#"${args%%[![:space:]]*}"}
-        argv0=${args%%[[:space:]]*}
+        args=$(fm_backend_tmux_process_args "$pid") || continue
+        case "$(uname -s)" in
+          MSYS*|CYGWIN*)
+            argv0=
+            IFS= read -r -d '' argv0 < "/proc/$pid/cmdline" || true
+            ;;
+          *)
+            args=${args#"${args%%[![:space:]]*}"}
+            argv0=${args%%[[:space:]]*}
+            ;;
+        esac
         [ -n "$argv0" ] && printf '%s\n' "$argv0"
       done
 }
@@ -373,7 +395,7 @@ EOF
   # cannot represent unambiguously.
   while IFS= read -r pid; do
     [ -n "$pid" ] || continue
-    if fm_gemini_pid_is_gemini "$pid"; then
+    if fm_gemini_pid_is_gemini "$pid" || fm_acpx_pid_matches "$pid"; then
       printf 'alive'
       return 0
     fi
@@ -413,6 +435,9 @@ EOF
     return 0
   fi
 
+  case "$(uname -s)" in
+    MSYS*|CYGWIN*) printf 'unreadable'; return 0 ;;
+  esac
   case "$comm" in
     '') printf 'unreadable'; return 0 ;;
   esac

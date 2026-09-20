@@ -73,7 +73,9 @@ fi
 # and treats a recorded value that disagrees as stale rather than authoritative.
 WT=$(grep '^worktree=' "$META" | tail -1 | cut -d= -f2- || true)
 PR_HEAD=
-if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/dev/null 2>&1; then
+if [ "$PROVIDER" = gitea ]; then
+  PR_HEAD=$(python3 "$SCRIPT_DIR/fm-gitea-pr.py" record --url "$URL" | jq -er '.head') || exit 1
+elif [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/dev/null 2>&1; then
   if REMOTE_HEAD=$(cd "$WT" && gh pr view "$URL" --json headRefOid -q .headRefOid 2>/dev/null) \
     && fm_pr_head_valid "$REMOTE_HEAD"; then
     PR_HEAD=$REMOTE_HEAD
