@@ -15,18 +15,15 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: feat/gitea-acpx-fleet
-      - name: Apply narrow checked prefactor on the feature branch only
+      - name: Apply checked changes on the feature branch only
         shell: bash
         run: |
           set -euo pipefail
           python3 .github/scripts/fleet-native-patch.py
-          for file in bin/fm-spawn.sh bin/fm-control-lib.sh bin/fm-agent-process-lib.sh bin/fm-busy-lib.sh bin/fm-teardown.sh bin/fm-dispatch-resolve.sh; do
-            bash -n "$file"
-          done
-          python3 -m py_compile bin/fm-project-onboard.py
-          git add bin/fm-project-onboard.py bin/fm-spawn.sh bin/fm-control-lib.sh bin/fm-agent-process-lib.sh bin/fm-busy-lib.sh bin/fm-teardown.sh bin/fm-dispatch-resolve.sh
+          python3 -m py_compile bin/fm_forge.py bin/fm-captain-email.py tests/fm-captain-email.test.py
+          git add bin/fm_forge.py bin/fm-captain-email.py tests/fm-captain-email.test.py .github/workflows/fleet-cloud-evidence.yml
           if ! git diff --cached --quiet; then
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(acp): wire generic ACPx workers through native FirstMate lifecycle'
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(fleet): preserve structured command errors and native captain channel'
             git push origin HEAD:feat/gitea-acpx-fleet
           fi
           git rev-parse HEAD
