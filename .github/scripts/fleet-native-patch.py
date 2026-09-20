@@ -1,4 +1,4 @@
-"""Temporary assertion-guarded cloud edit helper; removed before merge."""
+"""Temporary checked cloud edits; removed before merge."""
 from pathlib import Path
 
 changed = []
@@ -7,8 +7,6 @@ def patch(name, old, new, count=1):
     text = path.read_text()
     if new in text:
         return
-    # This global initializer also has one indented reset in a function.
-    # The source was inspected: only its first/global occurrence is extended.
     if name == "bin/fm-pr-lib.sh" and old == "FM_PR_POLL_RETIREMENT_REJECTED=\n":
         if text.count(old) != 2:
             raise RuntimeError("PR retirement declarations changed")
@@ -27,7 +25,6 @@ patch("bin/fm-project-onboard.py", 'run("tasks-axi", "add", "--id", task, "--tit
 patch("bin/fm-project-onboard.py", '                run("tasks-axi", "add", task, title, "--body-file", str(body_path),', '                body_path = safe_child(child, f"data/gitea-imports/{task}.md")\n                atomic_text(body_path, body)\n                run("tasks-axi", "add", task, title, "--body-file", str(body_path),')
 patch("bin/fm-captain-email.py", "        task = identifier(args.task, \"task ID\")", "        if (home / \".fm-secondmate-parent\").exists():\n            raise ForgeError(\"Secondmate outcomes must use the native parent channel; send captain mail from the parent home\")\n        task = identifier(args.task, \"task ID\")")
 patch("tests/fm-captain-email.test.py", "            def handle(self):\n                self.wfile.write", "            def finish(self):\n                try:\n                    super().finish()\n                finally:\n                    self.request.close()\n            def handle(self):\n                self.wfile.write")
-
 patch("bin/fm-gitea-pr.py", 'choices=("identity", "snapshot", "verify", "merge")', 'choices=("identity", "record", "snapshot", "verify", "merge")')
 patch("bin/fm-gitea-pr.py", '        elif args.command == "snapshot":', '        elif args.command == "record":\n            value = snapshot(api, identity, checks=False)\n        elif args.command == "snapshot":')
 patch("bin/fm-pr-lib.sh", "FM_PR_POLL_RETIREMENT_REJECTED=\n", '''FM_PR_POLL_RETIREMENT_REJECTED=
@@ -42,8 +39,7 @@ fm_pr_gitea_read_record() {  # <canonical-url>
   FM_PR_RECORD_MERGED=$(printf '%s' "$record" | jq -r '.merged') || return 1
 }
 ''')
-patch("bin/fm-pr-lib.sh", '  # The path class contains "/" and "-", so this match is greedy to the last', '''  # Gitea is accepted only through explicit private-home repository bindings.
-  # An arbitrary self-hosted URL cannot redirect the configured Gitea token.
+patch("bin/fm-pr-lib.sh", '  # The path class contains "/" and "-", so this match is greedy to the last', '''  # Only explicitly configured Gitea repositories may receive credentials.
   case "$raw" in
     */pulls/*)
       local gitea_identity
@@ -56,15 +52,13 @@ patch("bin/fm-pr-lib.sh", '  # The path class contains "/" and "-", so this matc
       ;;
   esac
   # The path class contains "/" and "-", so this match is greedy to the last''')
-patch("bin/fm-pr-check.sh", 'PR_HEAD=\nif [ "$PROVIDER" = github ]; then', '''PR_HEAD=
+patch("bin/fm-pr-check.sh", 'PR_HEAD=\nif [ "$PROVIDER" = github ]', '''PR_HEAD=
 if [ "$PROVIDER" = gitea ]; then
   PR_HEAD=$(python3 "$SCRIPT_DIR/fm-gitea-pr.py" record --url "$URL" | jq -er '.head') || exit 1
-elif [ "$PROVIDER" = github ]; then''')
+elif [ "$PROVIDER" = github ]''')
 patch("bin/fm-pr-poll.sh", '  gitlab)\n', '''  gitea)
     helper=${FM_PR_GITEA_HELPER:-}
-    if [ -z "$helper" ]; then
-      helper="$(dirname -- "$0")/fm-gitea-pr.py"
-    fi
+    if [ -z "$helper" ]; then helper="$(dirname -- "$0")/fm-gitea-pr.py"; fi
     [ -f "$helper" ] || exit 0
     record=$(python3 "$helper" record --url "$url" 2>/dev/null) || exit 0
     printf '%s' "$record" | jq -e --arg host "$host" --arg path "$path" --arg number "$number" \
@@ -76,7 +70,7 @@ patch("bin/fm-pr-poll.sh", '  gitlab)\n', '''  gitea)
 patch("bin/fm-pr-merge.sh", 'RECORDED_HEAD=\nif [ "$PROVIDER" = gitlab ]; then', 'RECORDED_HEAD=\nif [ "$PROVIDER" = gitlab ] || [ "$PROVIDER" = gitea ]; then')
 patch("bin/fm-pr-merge.sh", 'case "$PROVIDER" in\n  github)', '''case "$PROVIDER" in
   gitea)
-    [ -n "$RECORDED_HEAD" ] || { echo 'error: Gitea merge requires the previously recorded validated head' >&2; exit 1; }
+    [ -n "$RECORDED_HEAD" ] || { echo 'error: Gitea merge requires the recorded validated head' >&2; exit 1; }
     gitea_method=squash
     for gitea_arg in "$@"; do
       case "$gitea_arg" in
@@ -99,7 +93,6 @@ patch("bin/fm-pr-merge.sh", 'case "$PROVIDER" in\n  github)', '''case "$PROVIDER
     MERGE_CONTROL_LOCK=
     ;;
   github)''')
-
 patch("bin/backends/tmux.sh", 'LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null \\', 'fm_backend_tmux_foreground_rows "$tty" \\', count=4)
 patch("bin/backends/tmux.sh", 'fm_backend_tmux_foreground_comms() {  # <target>', '''fm_backend_tmux_foreground_rows() {  # <tty>
   case "$(uname -s)" in
