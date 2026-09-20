@@ -1,17 +1,12 @@
-name: Fleet cloud evidence
+name: Fleet dependency evidence
 on:
-  push:
-    branches: [feat/gitea-acpx-fleet]
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: fleet-cloud-evidence-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
-  source-evidence:
+  dependencies:
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -23,44 +18,19 @@ jobs:
         with:
           go-version: '1.25.5'
           cache: false
-      - name: Build pinned public test dependencies
+      - name: Build exact public dependency revisions
         shell: bash
         run: |
           set -euo pipefail
-          dest="$RUNNER_TEMP/fleet-evidence"
-          mkdir -p "$dest/tools" "$dest/lib"
-          clone_pin() {
-            git init -q "$RUNNER_TEMP/$1"
-            git -C "$RUNNER_TEMP/$1" remote add origin "https://github.com/Futuri-Risk/$1.git"
-            git -C "$RUNNER_TEMP/$1" fetch -q --depth=1 origin "$2"
-            git -C "$RUNNER_TEMP/$1" checkout -q --detach FETCH_HEAD
-          }
-          clone_pin acpx 323191a80ff6dd72e51eb8636a0025d321415d96
           npm install -g pnpm@11.26.0
-          pnpm --dir "$RUNNER_TEMP/acpx" install --frozen-lockfile
-          pnpm --dir "$RUNNER_TEMP/acpx" run build
-          tar -czf "$dest/acpx-runtime.tar.gz" -C "$RUNNER_TEMP/acpx" dist node_modules package.json pnpm-lock.yaml
-          npm install --prefix "$RUNNER_TEMP/tasks" --save-exact tasks-axi@0.2.4
-          tar -czf "$dest/tasks-runtime.tar.gz" -C "$RUNNER_TEMP/tasks" .
-          clone_pin treehouse 99f4db2bbeececc1e6f136a88f79002e5a707174
-          (cd "$RUNNER_TEMP/treehouse" && CGO_ENABLED=0 go build -o "$dest/tools/treehouse" .)
-          clone_pin no-mistakes 2c3a3013d2a221f4549d7fa7c458a11ef88023e5
-          (cd "$RUNNER_TEMP/no-mistakes" && CGO_ENABLED=0 go build -o "$dest/tools/no-mistakes" ./cmd/no-mistakes && CGO_ENABLED=0 go build -o "$dest/tools/fakeagent" ./cmd/fakeagent)
-          (cd "$RUNNER_TEMP/no-mistakes" && go test ./internal/scm/gitea ./internal/e2e -run 'TestGiteaProviderJourney|TestHost|TestCreatePR' -count=1 -v) | tee "$dest/no-mistakes-gitea.log"
-          clone_pin zcode-acp 6552c7d30554c72e6f69faacbff34d94366d9651
-          (cd "$RUNNER_TEMP/zcode-acp" && pnpm install --frozen-lockfile --ignore-scripts && pnpm exec tsc)
-          tar -czf "$dest/zcode-acp-runtime.tar.gz" -C "$RUNNER_TEMP/zcode-acp" dist node_modules package.json
-          bin/fm-install-shellcheck.sh "$dest/tools"
-          bin/fm-install-actionlint.sh "$dest/tools"
-          sudo apt-get update -qq
-          sudo apt-get install -y tmux
-          cp "$(command -v tmux)" "$dest/tools/"
-          cp -L /usr/lib/x86_64-linux-gnu/libevent_core-2.1.so.7 "$dest/lib/"
-          (cd "$dest" && sha256sum tools/* lib/* *.tar.gz > checksums.txt)
+          bash tests/install-fleet-dependencies.sh "$RUNNER_TEMP/fleet-deps"
+          cd "$RUNNER_TEMP/fleet-deps/sources/no-mistakes"
+          go test ./internal/scm/gitea ./internal/e2e -run 'TestGiteaProviderJourney|TestHost|TestCreatePR' -count=1 -v | tee "$RUNNER_TEMP/gitea-provider.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fleet-executable-dependencies
-          path: ${{ runner.temp }}/fleet-evidence/
-          retention-days: 7
-          if-no-files-found: error
+          name: fleet-dependency-evidence
+          path: |
+            ${{ runner.temp }}/fleet-deps/source-pins.txt
+            ${{ runner.temp }}/gitea-provider.log
+          retention-days: 30
