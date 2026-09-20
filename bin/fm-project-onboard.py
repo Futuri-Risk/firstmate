@@ -3,7 +3,9 @@
 
 Usage: FM_HOME=/absolute/home fm-project-onboard.py --project NAME --url HTTPS
        [--secondmate-root ABSOLUTE_PATH] [--mirror ABSOLUTE_BARE_REPO] [--start]
-Re-running preserves task progress and local changes. No reset/clean/force.
+Re-running preserves task progress, existing charters and local changes.
+No reset/clean/force. A charter is durably scaffolded before provisioning;
+an incomplete existing charter is refused rather than silently overwritten.
 """
 from __future__ import annotations
 import argparse
@@ -16,6 +18,31 @@ from fm_forge import (ForgeError, Gitea, atomic_json, atomic_text, identifier,
                       lock, now, read_json, require_home, run, safe_child)
 
 ROOT = Path(__file__).resolve().parent
+
+
+def native_environment(home):
+    """Bind native helpers to this home, not ambient test/other-home overrides."""
+    env = dict(os.environ, FM_HOME=str(home))
+    for name in ("FM_ROOT_OVERRIDE", "FM_DATA_OVERRIDE", "FM_STATE_OVERRIDE",
+                 "FM_PROJECTS_OVERRIDE", "FM_CONFIG_OVERRIDE"):
+        env.pop(name, None)
+    return env
+
+
+def provision_charter(home, mate_id, project, env):
+    brief = safe_child(home, f"data/{mate_id}/brief.md")
+    if brief.is_symlink():
+        raise ForgeError("Secondmate charter must not be a symlink")
+    if not brief.exists():
+        run(str(ROOT / "fm-brief.sh"), mate_id, "--secondmate", project, env=env)
+    text = brief.read_text(encoding="utf-8")
+    if "{TASK}" in text:
+        raise ForgeError("existing Secondmate charter is incomplete; preserving it for completion")
+    for heading in ("Charter", "Routing scope"):
+        section = re.search(r"^# " + re.escape(heading) + r"\s*\n(.*?)(?=^# |\Z)",
+                            text, re.MULTILINE | re.DOTALL)
+        if not section or not section.group(1).strip():
+            raise ForgeError(f"existing Secondmate charter has no {heading}; preserving it")
 
 
 def onboard(args):
@@ -32,8 +59,8 @@ def onboard(args):
     if not parent_root.is_absolute():
         raise ForgeError("Secondmate root must be absolute")
     child = (parent_root / project).resolve()
-    if child == home or child.is_relative_to(home):
-        raise ForgeError("Secondmate home must be outside the parent home")
+    if child == home or child.is_relative_to(home) or home.is_relative_to(child):
+        raise ForgeError("Secondmate home must not overlap the parent home")
     receipt_path = safe_child(home, f"config/gitea-projects/{project}.json")
     clone = safe_child(home, f"projects/{project}")
     with lock(safe_child(home, "state/.gitea-onboard.lock")):
@@ -71,15 +98,21 @@ def onboard(args):
         text = registry.read_text() if registry.exists() else "# Projects\n\n"
         if not re.search(r"^\s*-\s+" + re.escape(project) + r"(?:\s|$)", text, re.MULTILINE):
             atomic_text(registry, text.rstrip() + f"\n- {project} [no-mistakes] - Gitea project {api.url}\n")
-        env = dict(os.environ, FM_HOME=str(home), FM_SECONDMATE_CHARTER=f"Own and supervise {project}; preserve its existing project instructions.",
-                   FM_SECONDMATE_SCOPE=f"{project}")
+        env = native_environment(home)
+        env.update(FM_SECONDMATE_CHARTER=f"Own and supervise {project}; preserve its existing project instructions.",
+                   FM_SECONDMATE_SCOPE=project)
+        provision_charter(home, mate_id, project, env)
+        # Registry readers may change their shell parse scratch variables.
+        # The completed native brief, not a transient override, owns the charter.
+        env.pop("FM_SECONDMATE_CHARTER", None)
+        env.pop("FM_SECONDMATE_SCOPE", None)
         run(str(ROOT / "fm-home-seed.sh"), mate_id, str(child), project, env=env)
         for target in (home, child):
             for name, value in (("secondmate-harness", "opencode"), ("backend", "tmux")):
                 path = safe_child(target, "config/" + name)
                 if not path.exists():
                     atomic_text(path, value + "\n")
-        child_env = dict(os.environ, FM_HOME=str(child))
+        child_env = native_environment(child)
         imported = []
         for issue in issues:
             number = int(issue["number"])
