@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: fleet-native-prefactor
+  cancel-in-progress: false
 jobs:
   apply:
     if: github.repository == 'Futuri-Risk/firstmate' && github.ref == 'refs/heads/feat/gitea-acpx-fleet'
@@ -20,10 +23,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/fleet-native-patch.py
-          python3 -m py_compile bin/fm_forge.py bin/fm-captain-email.py tests/fm-captain-email.test.py
-          git add bin/fm_forge.py bin/fm-captain-email.py tests/fm-captain-email.test.py .github/workflows/fleet-cloud-evidence.yml
+          python3 -m py_compile bin/fm_forge.py bin/fm-project-onboard.py bin/fm-captain-email.py tests/fm-captain-email.test.py
+          git add bin/fm_forge.py bin/fm-project-onboard.py bin/fm-captain-email.py tests/fm-captain-email.test.py .github/workflows/fleet-cloud-evidence.yml
           if ! git diff --cached --quiet; then
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(fleet): preserve structured command errors and native captain channel'
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(fleet): honor task import and captain mail contracts'
             git push origin HEAD:feat/gitea-acpx-fleet
           fi
           git rev-parse HEAD
