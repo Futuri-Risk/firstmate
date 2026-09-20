@@ -1,7 +1,7 @@
 name: Fleet contract tests
 on:
   push:
-    branches: [feat/gitea-acpx-fleet]
+    branches: [feat/gitea-acpx-fleet, fix/fleet-onboarding-contracts]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,6 +45,7 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/fleet-dependencies
       - name: Verify and install test-only dependencies
+        id: dependencies
         shell: bash
         run: |
           set -euo pipefail
@@ -61,26 +62,36 @@ jobs:
           echo "$dest/tasks/node_modules/.bin" >> "$GITHUB_PATH"
           echo "LD_LIBRARY_PATH=$dest/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
           echo "FM_TEST_ZCODE_ENTRY=$dest/zcode/dist/index.js" >> "$GITHUB_ENV"
-      - name: Inspect installed dependency contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          tasks-axi add --help
-          tasks-axi show --help
-          printf '\n--- PR provider and wake boundaries ---\n'
-          grep -nE 'gitlab|github|validated|fm_wake_append|enqueue|push.*wake' bin/fm-pr-lib.sh bin/fm-pr-merge.sh bin/fm-pr-poll.sh bin/fm-wake-lib.sh | tail -100
-          printf '\n--- Existing behavioral test subjects ---\n'
-          find tests -maxdepth 1 -type f | grep -E 'spawn|relaunch|recovery|dispatch|quota|pr-check|pr-poll|treehouse' | sort
       - name: Syntax and behavior
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile bin/fm_forge.py bin/fm-project-onboard.py bin/fm-gitea-labels.py bin/fm-captain-email.py bin/fm-acpx-worker.py
           bash -n tests/fm-fleet-cloud.test.sh
-          bash tests/fm-fleet-cloud.test.sh 2>&1 | tee "$RUNNER_TEMP/fleet-contract-tests.log"
+          bin/fm-test-run.sh --jobs 1 --per-script-timeout-secs 600 --json "$RUNNER_TEMP/fleet-timing.json" tests/fm-fleet-cloud.test.sh 2>&1 | tee "$RUNNER_TEMP/fleet-contract-tests.log"
+      - name: Canonical lint
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin/fm-lint.sh 2>&1 | tee "$RUNNER_TEMP/fleet-lint.log"
+      - name: Test inventory and documentation coverage
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          bin/fm-test-run.sh --check-coverage > "$RUNNER_TEMP/fleet-coverage.log" 2>&1 || failed=1
+          bin/fm-doc-audience-check.sh >> "$RUNNER_TEMP/fleet-coverage.log" 2>&1 || failed=1
+          cat "$RUNNER_TEMP/fleet-coverage.log"
+          exit "$failed"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fleet-contract-test-results
-          path: ${{ runner.temp }}/fleet-contract-tests.log
+          path: |
+            ${{ runner.temp }}/fleet-contract-tests.log
+            ${{ runner.temp }}/fleet-timing.json
+            ${{ runner.temp }}/fleet-lint.log
+            ${{ runner.temp }}/fleet-coverage.log
           retention-days: 7

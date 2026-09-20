@@ -123,7 +123,7 @@ def run(*args, cwd=None, env=None, input=None, timeout=120):
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ForgeError(f"command could not complete: {Path(str(args[0])).name}") from exc
     if result.returncode:
-        error = result.stderr[-2000:]
+        error = (result.stderr or result.stdout)[-2000:]
         for key, value in (env or os.environ).items():
             if value and re.search(r"(TOKEN|PASS|PASSWORD|SECRET|KEY)$", key):
                 error = error.replace(value, "[redacted]")

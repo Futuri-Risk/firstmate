@@ -6,6 +6,7 @@ Usage: FM_HOME=/absolute/home fm-project-onboard.py --project NAME --url HTTPS
 Re-running preserves task progress, existing charters and local changes.
 No reset/clean/force. A charter is durably scaffolded before provisioning;
 an incomplete existing charter is refused rather than silently overwritten.
+Imported titles carry their Gitea issue number; source bodies remain intact.
 """
 from __future__ import annotations
 import argparse
@@ -102,7 +103,6 @@ def onboard(args):
         env.update(FM_SECONDMATE_CHARTER=f"Own and supervise {project}; preserve its existing project instructions.",
                    FM_SECONDMATE_SCOPE=project)
         provision_charter(home, mate_id, project, env)
-        # Registry readers may change their shell parse scratch variables.
         # The completed native brief, not a transient override, owns the charter.
         env.pop("FM_SECONDMATE_CHARTER", None)
         env.pop("FM_SECONDMATE_SCOPE", None)
@@ -125,9 +125,11 @@ def onboard(args):
             except ForgeError as exc:
                 if "NOT_FOUND" not in str(exc):
                     raise
-                title = str(issue.get("title", f"Gitea issue {number}"))
+                # Prefix makes an untrusted title beginning with '--' data,
+                # not a CLI option, while retaining its source issue number.
+                title = f"Gitea #{number}: " + str(issue.get("title") or f"Issue {number}")
                 body = f"Source: {api.url}/issues/{number}\n\n" + str(issue.get("body") or "")
-                run("tasks-axi", "add", "--id", task, "--title", title, "--body", body,
+                run("tasks-axi", "add", task, title, "--body", body,
                     "--repo", project, "--json", cwd=child, env=child_env)
                 imported.append(number)
         receipt.update(state="ready", checked_at=now(), open_issue_numbers=[i["number"] for i in issues])
