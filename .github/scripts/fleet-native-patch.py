@@ -7,6 +7,14 @@ def patch(name, old, new, count=1):
     text = path.read_text()
     if new in text:
         return
+    # This global initializer also has one indented reset in a function.
+    # The source was inspected: only its first/global occurrence is extended.
+    if name == "bin/fm-pr-lib.sh" and old == "FM_PR_POLL_RETIREMENT_REJECTED=\n":
+        if text.count(old) != 2:
+            raise RuntimeError("PR retirement declarations changed")
+        path.write_text(text.replace(old, new, 1))
+        changed.append(name)
+        return
     if text.count(old) != count:
         raise RuntimeError(f"{name}: expected {count} anchors: {old[:80]!r}; found {text.count(old)}")
     path.write_text(text.replace(old, new))
@@ -92,7 +100,6 @@ patch("bin/fm-pr-merge.sh", 'case "$PROVIDER" in\n  github)', '''case "$PROVIDER
     ;;
   github)''')
 
-# Keep the reference backend. Only its OS-specific foreground lookup changes.
 patch("bin/backends/tmux.sh", 'LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null \\', 'fm_backend_tmux_foreground_rows "$tty" \\', count=4)
 patch("bin/backends/tmux.sh", 'fm_backend_tmux_foreground_comms() {  # <target>', '''fm_backend_tmux_foreground_rows() {  # <tty>
   case "$(uname -s)" in
@@ -101,7 +108,15 @@ patch("bin/backends/tmux.sh", 'fm_backend_tmux_foreground_comms() {  # <target>'
   esac
 }
 
+fm_backend_tmux_process_args() {  # <pid>
+  case "$(uname -s)" in
+    MSYS*|CYGWIN*) tr '\\0' ' ' < "/proc/$1/cmdline" ;;
+    *) LC_ALL=C ps -p "$1" -o args= 2>/dev/null ;;
+  esac
+}
+
 fm_backend_tmux_foreground_comms() {  # <target>''')
+patch("bin/backends/tmux.sh", 'args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || continue', 'args=$(fm_backend_tmux_process_args "$pid") || continue', count=2)
 patch("bin/backends/tmux.sh", '    if fm_gemini_pid_is_gemini "$pid"; then', '    if fm_gemini_pid_is_gemini "$pid" || fm_acpx_pid_matches "$pid"; then')
 patch("bin/backends/tmux.sh", '        args=${args#"${args%%[![:space:]]*}"}\n        argv0=${args%%[[:space:]]*}', '''        case "$(uname -s)" in
           MSYS*|CYGWIN*)
