@@ -1,0 +1,40 @@
+name: Fleet Windows tmux compatibility
+on:
+  push:
+    branches: [feat/gitea-acpx-fleet]
+    paths: [.github/workflows/fleet-windows-tmux.yml, bin/fm-acpx-lib.sh, bin/fm-agent-process-lib.sh]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-tmux:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          install: tmux git python jq perl diffutils procps-ng
+      - name: Exercise detached tmux without WSL
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          export TMUX_TMPDIR
+          TMUX_TMPDIR=$(mktemp -d)
+          trap 'tmux kill-server 2>/dev/null || true; rm -rf "$TMUX_TMPDIR"' EXIT
+          uname -a
+          tmux -V
+          tmux -f /dev/null new-session -d -s fleet-platform -n worker 'bash --noprofile --norc'
+          tmux send-keys -t fleet-platform:worker 'printf "FM_WINDOWS_TMUX_OK\n"' Enter
+          for attempt in $(seq 1 30); do
+            tmux capture-pane -p -t fleet-platform:worker > "$TMUX_TMPDIR/capture"
+            grep -qx 'FM_WINDOWS_TMUX_OK' "$TMUX_TMPDIR/capture" && break
+            sleep 1
+          done
+          grep -qx 'FM_WINDOWS_TMUX_OK' "$TMUX_TMPDIR/capture"
+          echo 'Detached Windows/MSYS2 tmux send/capture passed. No vendor-harness certification is claimed.'
+          bash tests/fm-tmux-agent-liveness.test.sh
