@@ -1,9 +1,7 @@
 name: Fleet contract tests
+# Temporary fleet integration evidence is manual-only.
+# Normal repository CI remains the merge gate; branch pushes should not email on every experiment.
 on:
-  push:
-    branches: [feat/gitea-acpx-fleet]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
