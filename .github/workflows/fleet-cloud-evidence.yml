@@ -46,8 +46,9 @@ jobs:
           (cd "$RUNNER_TEMP/treehouse" && CGO_ENABLED=0 go build -o "$dest/tools/treehouse" .)
           clone_pin no-mistakes 2c3a3013d2a221f4549d7fa7c458a11ef88023e5
           (cd "$RUNNER_TEMP/no-mistakes" && CGO_ENABLED=0 go build -o "$dest/tools/no-mistakes" ./cmd/no-mistakes && CGO_ENABLED=0 go build -o "$dest/tools/fakeagent" ./cmd/fakeagent)
+          (cd "$RUNNER_TEMP/no-mistakes" && go test ./internal/scm/gitea ./internal/e2e -run 'TestGiteaProviderJourney|TestHost|TestCreatePR' -count=1 -v) | tee "$dest/no-mistakes-gitea.log"
           clone_pin zcode-acp 6552c7d30554c72e6f69faacbff34d94366d9651
-          (cd "$RUNNER_TEMP/zcode-acp" && npm ci --ignore-scripts && npx tsc)
+          (cd "$RUNNER_TEMP/zcode-acp" && pnpm install --frozen-lockfile --ignore-scripts && pnpm exec tsc)
           tar -czf "$dest/zcode-acp-runtime.tar.gz" -C "$RUNNER_TEMP/zcode-acp" dist node_modules package.json
           bin/fm-install-shellcheck.sh "$dest/tools"
           bin/fm-install-actionlint.sh "$dest/tools"
