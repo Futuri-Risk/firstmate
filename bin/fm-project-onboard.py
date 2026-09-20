@@ -127,7 +127,9 @@ def onboard(args):
                     raise
                 title = str(issue.get("title", f"Gitea issue {number}"))
                 body = f"Source: {api.url}/issues/{number}\n\n" + str(issue.get("body") or "")
-                run("tasks-axi", "add", "--id", task, "--title", title, "--body", body,
+                body_path = safe_child(child, f"data/gitea-imports/{task}.md")
+                atomic_text(body_path, body)
+                run("tasks-axi", "add", task, title, "--body-file", str(body_path),
                     "--repo", project, "--json", cwd=child, env=child_env)
                 imported.append(number)
         receipt.update(state="ready", checked_at=now(), open_issue_numbers=[i["number"] for i in issues])

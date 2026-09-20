@@ -36,6 +36,11 @@ class EmailJourney(unittest.TestCase):
             def setup(self):
                 self.request = context.wrap_socket(self.request, server_side=True)
                 super().setup()
+            def finish(self):
+                try:
+                    super().finish()
+                finally:
+                    self.request.close()
             def handle(self):
                 self.wfile.write(b"220 localhost fixture SMTP\r\n")
                 while True:

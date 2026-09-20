@@ -27,6 +27,8 @@ def main():
     try:
         args = parser.parse_args()
         home = require_home()
+        if (home / ".fm-secondmate-parent").exists():
+            raise ForgeError("Secondmate outcomes must use the native parent channel; send captain mail from the parent home")
         task = identifier(args.task, "task ID")
         if any(c in args.to for c in "\r\n") or "@" not in args.to:
             raise ForgeError("invalid email recipient")
