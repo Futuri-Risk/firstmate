@@ -71,8 +71,8 @@ def onboard(args):
         text = registry.read_text() if registry.exists() else "# Projects\n\n"
         if not re.search(r"^\s*-\s+" + re.escape(project) + r"(?:\s|$)", text, re.MULTILINE):
             atomic_text(registry, text.rstrip() + f"\n- {project} [no-mistakes] - Gitea project {api.url}\n")
-        env = dict(os.environ, FM_HOME=str(home), FM_CHARTER=f"Own and supervise {project}; preserve its existing project instructions.",
-                   FM_SCOPE=f"{project}")
+        env = dict(os.environ, FM_HOME=str(home), FM_SECONDMATE_CHARTER=f"Own and supervise {project}; preserve its existing project instructions.",
+                   FM_SECONDMATE_SCOPE=f"{project}")
         run(str(ROOT / "fm-home-seed.sh"), mate_id, str(child), project, env=env)
         for target in (home, child):
             for name, value in (("secondmate-harness", "opencode"), ("backend", "tmux")):

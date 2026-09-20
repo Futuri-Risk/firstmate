@@ -1865,6 +1865,7 @@ launch_template() {
       printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox --disable hooks -c "notify=[\"bash\",\"-c\",\"touch __TURNEND__\"]" "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     fi
     ;;
+  acp:*) printf '%s' 'FM_HOME=__ACPHOME__ python3 __ACPWORKER__ --task __ACPTASK__ --agent __ACPAGENT__ --gen __ACPGEN__ --cwd __WORKTREE__ --brief __BRIEF__ __MODELFLAG____EFFORTFLAG__' ;;
   opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   pi | pi-signed)
     printf '%s' '__PIBIN____PITUIMODE__'
@@ -2081,6 +2082,17 @@ case "$ARG3" in
     echo "error: unknown harness '$HARNESS'; pass a raw launch command to use an unverified adapter" >&2
     exit 1
   }
+  ;;
+esac
+
+# ACPx is a worker harness; it is deliberately not a primary/Secondmate backend.
+case "$HARNESS" in
+acp:*)
+  # shellcheck source=bin/fm-acpx-lib.sh
+  . "$SCRIPT_DIR/fm-acpx-lib.sh"
+  fm_acpx_harness_valid "$HARNESS" || { echo 'error: invalid ACP agent name' >&2; exit 1; }
+  [ "$KIND" != secondmate ] || { echo 'error: ACPx workers cannot supervise a Secondmate; use OpenCode' >&2; exit 1; }
+  command -v acpx >/dev/null && command -v python3 >/dev/null || { echo 'error: ACPx and Python 3 are required' >&2; exit 1; }
   ;;
 esac
 
@@ -2315,7 +2327,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy)
+  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | acp:*)
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
   esac
@@ -2325,6 +2337,7 @@ effort_flag_for_harness() {
   local harness=$1 effort=$2 model=${3:-}
   [ -n "$effort" ] && [ "$effort" != default ] || return 0
   case "$harness" in
+  acp:*) printf -- '--effort %s ' "$(shell_quote "$effort")" ;; 
   claude)
     case "$effort" in
     low | medium | high | xhigh | max) printf -- '--effort %s ' "$(shell_quote "$effort")" ;;
@@ -4021,7 +4034,7 @@ if [ "$KIND" != secondmate ]; then
     ;;
   esac
   case "$HARNESS" in
-  claude* | opencode* | pi | pi-signed | omp)
+  claude* | opencode* | pi | pi-signed | omp | acp:*)
     BUSY_GEN=$("$FM_ROOT/bin/fm-busy-event.sh" arm "$STATE_REAL" "$ID") || {
       echo "error: failed to arm the busy-state contract for $ID" >&2
       exit 1
@@ -4609,6 +4622,15 @@ cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 gemini) LAUNCH=${LAUNCH//__GEMINISETTINGS__/"$(shell_quote "$STATE_REAL/$ID.gemini-settings.json")"} ;;
 omp) LAUNCH=${LAUNCH//__OMPBIN__/"$(shell_quote "$OMP_BIN")"} ;;
 agy) LAUNCH=${LAUNCH//__AGYBIN__/"$(shell_quote "$AGY_BIN")"} ;;
+esac
+case "$HARNESS" in
+acp:*)
+  LAUNCH=${LAUNCH//__ACPHOME__/"$(shell_quote "$FM_HOME")"}
+  LAUNCH=${LAUNCH//__ACPWORKER__/"$(shell_quote "$SCRIPT_DIR/fm-acpx-worker.py")"}
+  LAUNCH=${LAUNCH//__ACPTASK__/"$(shell_quote "$ID")"}
+  LAUNCH=${LAUNCH//__ACPAGENT__/"$(shell_quote "${HARNESS#acp:}")"}
+  LAUNCH=${LAUNCH//__ACPGEN__/"$(shell_quote "$BUSY_GEN")"}
+  ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
 case "$HARNESS" in

@@ -3389,6 +3389,12 @@ fi
 # kind=secondmate: a secondmate home's own runtime lifecycle is owned by the
 # dedicated process-event and firstmate-home removal machinery further below,
 # not by task-worktree cleanup.
+if [ "$KIND" != secondmate ]; then
+  # Every unlanded-work guard above has passed before an ACP session is closed.
+  # shellcheck source=bin/fm-acpx-lib.sh
+  . "$SCRIPT_DIR/fm-acpx-lib.sh"
+  fm_acpx_close_task "$FM_HOME" "$ID" || { echo 'error: ACP session could not be closed; preserving task work' >&2; exit 1; }
+fi
 if [ "$KIND" != secondmate ] && teardown_owns_worktree; then
   conclude_task_no_mistakes_run "$WT"
   reap_task_worktree_processes worktree "$WT" "$TASK_TMP"

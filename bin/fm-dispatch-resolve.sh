@@ -122,7 +122,7 @@ VERIFIED_HARNESSES=$(fm_control_harnesses | jq -Rsc 'split("\n") | map(select(le
 # The fields this tool consumes must be well formed; bootstrap owns the wider
 # schema diagnostic, but an intake never selects around a malformed file.
 rules_err=$(jq -r --argjson verified_harnesses "$VERIFIED_HARNESSES" --arg provider_re "$FM_QUOTA_PROVIDER_ID_RE" '
-  def verified($h): $verified_harnesses | index($h);
+  def verified($h): ($h | test("^acp:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")) or ($verified_harnesses | index($h));
   def provider_id($p): ($p | type) == "string" and ($p | test($provider_re));
   def effort_ok($h; $m; $e):
     if $e == null then true

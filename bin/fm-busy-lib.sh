@@ -196,6 +196,7 @@ fm_busy_sources_for_harness() {  # <harness>
       fm_busy_codex_semantic_source || { printf ''; return 0; }
       adapter='codex-hook codex-appserver'
       ;;
+    acp:*) adapter=acpx-bridge ;;
     opencode*) adapter=opencode-plugin ;;
     gemini*) adapter=gemini-hook ;;
     pi|pi-signed) adapter=pi-ext ;;

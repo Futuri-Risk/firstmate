@@ -18,6 +18,9 @@
 # shellcheck source=bin/fm-gemini-lib.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/fm-gemini-lib.sh"
 
+# shellcheck source=bin/fm-acpx-lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/fm-acpx-lib.sh"
+
 # fm_agent_process_classify_name: the single owner of the process-name
 # vocabulary shared by every liveness signal - `agent` for a verified harness,
 # `shell` for an idle login/interactive shell, `other` for anything else.
@@ -94,6 +97,10 @@ fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|othe
     [ "$by_argv0" != agent ] || { printf 'agent'; return 0; }
   else
     by_argv0=$by_name
+  fi
+  if [ -n "$pid" ] && fm_acpx_pid_matches "$pid"; then
+    printf 'agent'
+    return 0
   fi
   if [ -n "$pid" ] && fm_gemini_pid_is_gemini "$pid"; then
     printf 'agent'
