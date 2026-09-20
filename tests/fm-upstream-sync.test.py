@@ -1,4 +1,4 @@
-"""Upstream update journey uses real Git mirrors, native homes and tasks-axi."""
+"""Real Git mirrors and native Secondmate backlog/wake handoff."""
 import json
 import os
 from pathlib import Path
@@ -13,9 +13,9 @@ Base = prior["ProjectJourney"]
 git = prior["git"]
 
 
-class UpstreamJourney(Base):
+class UpstreamJourney(unittest.TestCase):
     def setUp(self):
-        super().setUp()
+        Base.setUp(self)
         setup = Base.invoke(self)
         self.assertEqual(setup.returncode, 0, setup.stderr)
         self.child = Path(json.loads(setup.stdout)["home"])
