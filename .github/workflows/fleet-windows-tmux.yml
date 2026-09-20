@@ -2,7 +2,7 @@ name: Fleet Windows tmux compatibility
 on:
   push:
     branches: [feat/gitea-acpx-fleet]
-    paths: [.github/workflows/fleet-windows-tmux.yml, bin/fm-acpx-lib.sh, bin/fm-agent-process-lib.sh]
+    paths: [.github/workflows/fleet-windows-tmux.yml, bin/fm-acpx-lib.sh, bin/fm-agent-process-lib.sh, bin/backends/tmux.sh, bin/fm-msys-foreground.py]
   workflow_dispatch:
 permissions:
   contents: read
