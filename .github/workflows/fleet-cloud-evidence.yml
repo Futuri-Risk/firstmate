@@ -11,7 +11,7 @@ concurrency:
 jobs:
   source-evidence:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
@@ -19,26 +19,43 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.5'
+          cache: false
       - name: Build pinned public test dependencies
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/fleet-evidence/tools" "$RUNNER_TEMP/fleet-evidence/lib"
-          git init -q "$RUNNER_TEMP/acpx"
-          git -C "$RUNNER_TEMP/acpx" remote add origin https://github.com/Futuri-Risk/acpx.git
-          git -C "$RUNNER_TEMP/acpx" fetch -q --depth=1 origin 323191a80ff6dd72e51eb8636a0025d321415d96
-          git -C "$RUNNER_TEMP/acpx" checkout -q --detach FETCH_HEAD
+          dest="$RUNNER_TEMP/fleet-evidence"
+          mkdir -p "$dest/tools" "$dest/lib"
+          clone_pin() {
+            git init -q "$RUNNER_TEMP/$1"
+            git -C "$RUNNER_TEMP/$1" remote add origin "https://github.com/Futuri-Risk/$1.git"
+            git -C "$RUNNER_TEMP/$1" fetch -q --depth=1 origin "$2"
+            git -C "$RUNNER_TEMP/$1" checkout -q --detach FETCH_HEAD
+          }
+          clone_pin acpx 323191a80ff6dd72e51eb8636a0025d321415d96
           npm install -g pnpm@11.26.0
           pnpm --dir "$RUNNER_TEMP/acpx" install --frozen-lockfile
           pnpm --dir "$RUNNER_TEMP/acpx" run build
-          tar -czf "$RUNNER_TEMP/fleet-evidence/acpx-runtime.tar.gz" -C "$RUNNER_TEMP/acpx" dist node_modules package.json pnpm-lock.yaml
+          tar -czf "$dest/acpx-runtime.tar.gz" -C "$RUNNER_TEMP/acpx" dist node_modules package.json pnpm-lock.yaml
           npm install --prefix "$RUNNER_TEMP/tasks" --save-exact tasks-axi@0.2.4
-          tar -czf "$RUNNER_TEMP/fleet-evidence/tasks-runtime.tar.gz" -C "$RUNNER_TEMP/tasks" .
+          tar -czf "$dest/tasks-runtime.tar.gz" -C "$RUNNER_TEMP/tasks" .
+          clone_pin treehouse 99f4db2bbeececc1e6f136a88f79002e5a707174
+          (cd "$RUNNER_TEMP/treehouse" && CGO_ENABLED=0 go build -o "$dest/tools/treehouse" .)
+          clone_pin no-mistakes 2c3a3013d2a221f4549d7fa7c458a11ef88023e5
+          (cd "$RUNNER_TEMP/no-mistakes" && CGO_ENABLED=0 go build -o "$dest/tools/no-mistakes" ./cmd/no-mistakes && CGO_ENABLED=0 go build -o "$dest/tools/fakeagent" ./cmd/fakeagent)
+          clone_pin zcode-acp 6552c7d30554c72e6f69faacbff34d94366d9651
+          (cd "$RUNNER_TEMP/zcode-acp" && npm ci --ignore-scripts && npx tsc)
+          tar -czf "$dest/zcode-acp-runtime.tar.gz" -C "$RUNNER_TEMP/zcode-acp" dist node_modules package.json
+          bin/fm-install-shellcheck.sh "$dest/tools"
+          bin/fm-install-actionlint.sh "$dest/tools"
           sudo apt-get update -qq
           sudo apt-get install -y tmux
-          cp "$(command -v tmux)" "$RUNNER_TEMP/fleet-evidence/tools/"
-          cp -L /usr/lib/x86_64-linux-gnu/libevent_core-2.1.so.7 "$RUNNER_TEMP/fleet-evidence/lib/"
-          (cd "$RUNNER_TEMP/fleet-evidence" && sha256sum tools/* lib/* *.tar.gz > checksums.txt)
+          cp "$(command -v tmux)" "$dest/tools/"
+          cp -L /usr/lib/x86_64-linux-gnu/libevent_core-2.1.so.7 "$dest/lib/"
+          (cd "$dest" && sha256sum tools/* lib/* *.tar.gz > checksums.txt)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
