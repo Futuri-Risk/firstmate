@@ -17,6 +17,21 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Preserve exact tracked source for offline reproduction
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fleet-source"
+          git bundle create "$RUNNER_TEMP/fleet-source/firstmate.bundle" HEAD refs/remotes/origin/main
+          git rev-parse HEAD > "$RUNNER_TEMP/fleet-source/head.txt"
+          (cd "$RUNNER_TEMP/fleet-source" && sha256sum firstmate.bundle > checksums.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fleet-source
+          path: ${{ runner.temp }}/fleet-source/
+          retention-days: 7
+          if-no-files-found: error
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
