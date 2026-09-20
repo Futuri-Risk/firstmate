@@ -8,7 +8,7 @@ for tool in python3 git jq tasks-axi acpx openssl; do
   command -v "$tool" >/dev/null || { echo "required fleet test tool missing: $tool" >&2; exit 1; }
 done
 failed=0
-for suite in fm-gitea-onboarding fm-semantic-labels fm-acpx-worker fm-captain-email; do
+for suite in fm-forge-boundary fm-gitea-onboarding fm-semantic-labels fm-acpx-worker fm-captain-email; do
   python3 "$ROOT/tests/$suite.test.py" || failed=1
 done
 exit "$failed"
