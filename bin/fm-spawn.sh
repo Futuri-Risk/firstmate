@@ -2092,7 +2092,10 @@ acp:*)
   . "$SCRIPT_DIR/fm-acpx-lib.sh"
   fm_acpx_harness_valid "$HARNESS" || { echo 'error: invalid ACP agent name' >&2; exit 1; }
   [ "$KIND" != secondmate ] || { echo 'error: ACPx workers cannot supervise a Secondmate; use OpenCode' >&2; exit 1; }
-  command -v acpx >/dev/null && command -v python3 >/dev/null || { echo 'error: ACPx and Python 3 are required' >&2; exit 1; }
+  if ! command -v acpx >/dev/null || ! command -v python3 >/dev/null; then
+    echo 'error: ACPx and Python 3 are required' >&2
+    exit 1
+  fi
   ;;
 esac
 
