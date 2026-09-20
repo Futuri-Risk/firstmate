@@ -1,0 +1,32 @@
+name: Fleet native seam prefactor
+on:
+  push:
+    branches: [feat/gitea-acpx-fleet]
+    paths: [.github/scripts/fleet-native-patch.py, .github/workflows/fleet-native-prefactor.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'Futuri-Risk/firstmate' && github.ref == 'refs/heads/feat/gitea-acpx-fleet'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/gitea-acpx-fleet
+      - name: Apply narrow checked prefactor on the feature branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/fleet-native-patch.py
+          for file in bin/fm-spawn.sh bin/fm-control-lib.sh bin/fm-agent-process-lib.sh bin/fm-busy-lib.sh bin/fm-teardown.sh bin/fm-dispatch-resolve.sh; do
+            bash -n "$file"
+          done
+          python3 -m py_compile bin/fm-project-onboard.py
+          git add bin/fm-project-onboard.py bin/fm-spawn.sh bin/fm-control-lib.sh bin/fm-agent-process-lib.sh bin/fm-busy-lib.sh bin/fm-teardown.sh bin/fm-dispatch-resolve.sh
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(acp): wire generic ACPx workers through native FirstMate lifecycle'
+            git push origin HEAD:feat/gitea-acpx-fleet
+          fi
+          git rev-parse HEAD
