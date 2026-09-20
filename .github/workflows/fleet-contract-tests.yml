@@ -2,85 +2,99 @@ name: Fleet contract tests
 on:
   push:
     branches: [feat/gitea-acpx-fleet]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
   actions: read
 concurrency:
   group: fleet-contract-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   contracts:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Preserve exact tracked source for offline reproduction
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/fleet-source"
-          git bundle create "$RUNNER_TEMP/fleet-source/firstmate.bundle" HEAD refs/remotes/origin/main
-          git rev-parse HEAD > "$RUNNER_TEMP/fleet-source/head.txt"
-          (cd "$RUNNER_TEMP/fleet-source" && sha256sum firstmate.bundle > checksums.txt)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fleet-source
-          path: ${{ runner.temp }}/fleet-source/
-          retention-days: 7
-          if-no-files-found: error
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.5'
+          cache: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: actions/download-artifact@v4
+      - name: Restore pinned test dependency build
+        uses: actions/cache@v4
+        id: dependencies
         with:
-          name: fleet-executable-dependencies
-          run-id: 35541552898
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/fleet-dependencies
-      - name: Verify and install test-only dependencies
+          path: ${{ runner.temp }}/fleet-deps
+          key: fleet-deps-v1-${{ runner.os }}-node22-${{ hashFiles('tests/install-fleet-dependencies.sh') }}
+      - name: Build test dependencies when not cached
+        if: steps.dependencies.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          dest="$RUNNER_TEMP/fleet-dependencies"
-          (cd "$dest" && sha256sum --check checksums.txt)
-          chmod +x "$dest"/tools/*
-          mkdir -p "$dest/acpx" "$dest/tasks" "$dest/zcode"
-          tar -xzf "$dest/acpx-runtime.tar.gz" -C "$dest/acpx"
-          tar -xzf "$dest/tasks-runtime.tar.gz" -C "$dest/tasks"
-          tar -xzf "$dest/zcode-acp-runtime.tar.gz" -C "$dest/zcode"
-          ln -s "$dest/acpx/dist/cli.js" "$dest/tools/acpx"
-          chmod +x "$dest/acpx/dist/cli.js"
-          echo "$dest/tools" >> "$GITHUB_PATH"
-          echo "$dest/tasks/node_modules/.bin" >> "$GITHUB_PATH"
-          echo "LD_LIBRARY_PATH=$dest/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-          echo "FM_TEST_ZCODE_ENTRY=$dest/zcode/dist/index.js" >> "$GITHUB_ENV"
-      - name: Inspect installed dependency contracts
+          npm install -g pnpm@11.26.0
+          bash tests/install-fleet-dependencies.sh "$RUNNER_TEMP/fleet-deps"
+      - name: Prepare runtime and evidence directory
         shell: bash
         run: |
           set -euo pipefail
-          tasks-axi add --help
-          tasks-axi show --help
-          printf '\n--- PR provider and wake boundaries ---\n'
-          grep -nE 'gitlab|github|validated|fm_wake_append|enqueue|push.*wake' bin/fm-pr-lib.sh bin/fm-pr-merge.sh bin/fm-pr-poll.sh bin/fm-wake-lib.sh | tail -100
-          printf '\n--- Existing behavioral test subjects ---\n'
-          find tests -maxdepth 1 -type f | grep -E 'spawn|relaunch|recovery|dispatch|quota|pr-check|pr-poll|treehouse' | sort
-      - name: Syntax and behavior
+          test -f "$RUNNER_TEMP/fleet-deps/complete"
+          sudo apt-get update -qq
+          sudo apt-get install -y tmux
+          echo "$RUNNER_TEMP/fleet-deps/tools" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/fleet-deps/tasks/node_modules/.bin" >> "$GITHUB_PATH"
+          echo "FM_TEST_ZCODE_ENTRY=$RUNNER_TEMP/fleet-deps/sources/zcode-acp/dist/index.js" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/fleet-results"
+          cp "$RUNNER_TEMP/fleet-deps/source-pins.txt" "$RUNNER_TEMP/fleet-results/"
+          git rev-parse HEAD > "$RUNNER_TEMP/fleet-results/head.txt"
+      - name: Public behavior and native regression
         shell: bash
         run: |
-          set -euo pipefail
-          python3 -m py_compile bin/fm_forge.py bin/fm-project-onboard.py bin/fm-gitea-labels.py bin/fm-captain-email.py bin/fm-acpx-worker.py
-          bash -n tests/fm-fleet-cloud.test.sh
-          bash tests/fm-fleet-cloud.test.sh 2>&1 | tee "$RUNNER_TEMP/fleet-contract-tests.log"
+          set -uo pipefail
+          failed=0
+          python3 -m compileall -q bin || failed=1
+          bash tests/fm-fleet-cloud.test.sh 2>&1 | tee "$RUNNER_TEMP/fleet-results/contracts.log" || failed=1
+          mapfile -t subjects < <(find tests -maxdepth 1 -name '*.test.sh' | grep -E '/fm-(pr-check|pr-merge|pr-poll|tmux-agent-liveness|dispatch-resolve|quota-array-dispatch|control|busy-event)\.test\.sh$' | sort)
+          if [ "${#subjects[@]}" -lt 3 ]; then
+            echo 'Expected native regression subjects missing' >&2
+            failed=1
+          else
+            bin/fm-test-run.sh "${subjects[@]}" --max-wall-ms 600000 2>&1 | tee "$RUNNER_TEMP/fleet-results/native-regression.log" || failed=1
+          fi
+          (cd "$RUNNER_TEMP/fleet-deps/sources/no-mistakes" && go test ./internal/scm/gitea ./internal/e2e -run 'TestGiteaProviderJourney|TestHost|TestCreatePR' -count=1 -v) 2>&1 | tee "$RUNNER_TEMP/fleet-results/no-mistakes-gitea.log" || failed=1
+          exit "$failed"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fleet-contract-test-results
-          path: ${{ runner.temp }}/fleet-contract-tests.log
-          retention-days: 7
+          path: ${{ runner.temp }}/fleet-results/
+          retention-days: 30
+          if-no-files-found: warn
+  report:
+    needs: contracts
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: fleet-contract-test-results
+          path: results
+      - name: Print bounded evidence; this summary is not a substitute for the test job
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat results/head.txt
+          for log in results/*.log; do
+            printf '\n--- %s ---\n' "$log"
+            tail -n 140 "$log"
+          done
