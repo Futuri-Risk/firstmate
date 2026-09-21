@@ -68,55 +68,22 @@ jobs:
           failed=0
           python3 -m compileall -q bin || failed=1
           bash tests/fm-fleet-cloud.test.sh 2>&1 | tee "$RUNNER_TEMP/fleet-results/contracts.log" || failed=1
-          mapfile -t subjects < <(find tests -maxdepth 1 -name '*.test.sh' | grep -E '/fm-(pr-check|pr-merge|pr-poll|tmux-agent-liveness|dispatch-resolve|quota-array-dispatch|quota-choose|spawn-dispatch-profile|control|control-relaunch|teardown|busy-event)\.test\.sh | sort)
+          mapfile -t subjects < <(
+            find tests -maxdepth 1 -name '*.test.sh' |
+              grep -E '/fm-(pr-check|pr-merge|pr-poll|tmux-agent-liveness|dispatch-resolve|quota-array-dispatch|quota-choose|spawn-dispatch-profile|control|control-relaunch|teardown|busy-event)\.test\.sh$' |
+              sort
+          )
           if [ "${#subjects[@]}" -lt 3 ]; then
             echo 'Expected native regression subjects missing' >&2
             failed=1
           else
-            bin/fm-test-run.sh "${subjects[@]}" --max-wall-ms 600000 2>&1 | tee "$RUNNER_TEMP/fleet-results/native-regression.log" || failed=1
+            bin/fm-test-run.sh "${subjects[@]}" --max-wall-ms 600000 2>&1 |
+              tee "$RUNNER_TEMP/fleet-results/native-regression.log" || failed=1
           fi
-          (cd "$RUNNER_TEMP/fleet-deps/sources/no-mistakes" && go test ./internal/scm/gitea ./internal/e2e -run 'TestGiteaProviderJourney|TestHost|TestCreatePR' -count=1 -v) 2>&1 | tee "$RUNNER_TEMP/fleet-results/no-mistakes-gitea.log" || failed=1
-          exit "$failed"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fleet-contract-test-results
-          path: ${{ runner.temp }}/fleet-results/
-          retention-days: 30
-          if-no-files-found: warn
-  report:
-    needs: contracts
-    if: always()
-    runs-on: ubuntu-22.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: fleet-contract-test-results
-          path: results
-      - name: Print bounded evidence; this summary is not a substitute for the test job
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat results/head.txt
-          shopt -s nullglob
-          logs=(results/*.log)
-          if [ "${#logs[@]}" -eq 0 ]; then
-            printf '\n(no log files were produced; the contract job stopped before log capture)\n'
-          else
-            for log in "${logs[@]}"; do
-              printf '\n--- %s ---\n' "$log"
-              tail -n 140 "$log"
-            done
-          fi
- | sort)
-          if [ "${#subjects[@]}" -lt 3 ]; then
-            echo 'Expected native regression subjects missing' >&2
-            failed=1
-          else
-            bin/fm-test-run.sh "${subjects[@]}" --max-wall-ms 600000 2>&1 | tee "$RUNNER_TEMP/fleet-results/native-regression.log" || failed=1
-          fi
-          (cd "$RUNNER_TEMP/fleet-deps/sources/no-mistakes" && go test ./internal/scm/gitea ./internal/e2e -run 'TestGiteaProviderJourney|TestHost|TestCreatePR' -count=1 -v) 2>&1 | tee "$RUNNER_TEMP/fleet-results/no-mistakes-gitea.log" || failed=1
+          (
+            cd "$RUNNER_TEMP/fleet-deps/sources/no-mistakes" &&
+              go test ./internal/scm/gitea ./internal/e2e                 -run 'TestGiteaProviderJourney|TestHost|TestCreatePR' -count=1 -v
+          ) 2>&1 | tee "$RUNNER_TEMP/fleet-results/no-mistakes-gitea.log" || failed=1
           exit "$failed"
       - uses: actions/upload-artifact@v4
         if: always()
