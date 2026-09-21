@@ -19,7 +19,7 @@ run_native_windows_shell_seams() {
   [ "$(node -p 'process.platform')" = win32 ] || return 0
   command -v cygpath >/dev/null 2>&1 || fail "native-Windows OpenCode seam test requires Git Bash cygpath"
 
-  local seam_root="$ROOT/.opencode-windows-shell-seam.$"
+  local seam_root="$ROOT/.opencode-windows-shell-seam-$PPID"
   local node_root out status=0
   rm -rf "$seam_root"
   mkdir -p "$seam_root/bin"
