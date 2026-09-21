@@ -246,27 +246,8 @@ fm_backend_tmux_current_command() {  # <target>
 # absent target from the client's active window rather than failing, so callers
 # must confirm exact window membership first, exactly as the classifier below
 # does, or they will describe some other pane entirely.
-fm_backend_tmux_foreground_rows() {  # <target>
-  local target=$1 tty current pane_pid
-  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
-  [ -n "$tty" ] || return 0
-  case "$(uname -s)" in
-    MSYS*|CYGWIN*)
-      current=$(fm_backend_tmux_current_command "$target") || return 0
-      pane_pid=$(tmux display-message -p -t "$target" '#{pane_pid}' 2>/dev/null) || return 0
-      [ -n "$current" ] && [ -n "$pane_pid" ] || return 0
-      python3 "$FM_BACKEND_LIB_DIR/fm-msys-foreground.py" "$tty" "$pane_pid" "$current"
-      ;;
-    *) LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null ;;
-  esac
-}
-
-fm_backend_tmux_process_args() {  # <pid>
-  case "$(uname -s)" in
-    MSYS*|CYGWIN*) tr '\0' ' ' < "/proc/$1/cmdline" ;;
-    *) LC_ALL=C ps -p "$1" -o args= 2>/dev/null ;;
-  esac
-}
+fm_backend_tmux_foreground_rows() { fm_tmux_foreground_rows "$@"; }
+fm_backend_tmux_process_args() { fm_tmux_process_args "$@"; }
 
 fm_backend_tmux_foreground_comms() {  # <target>
   local target=$1 pid pgid tpgid comm
