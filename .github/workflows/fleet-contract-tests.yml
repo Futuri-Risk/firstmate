@@ -1,9 +1,6 @@
 name: Fleet contract tests
+# Broken experimental branch: automatic runs disabled to stop notification noise.
 on:
-  push:
-    branches: [feat/gitea-acpx-fleet]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
