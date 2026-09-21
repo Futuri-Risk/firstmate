@@ -38,7 +38,7 @@ The primary integration was verified on 2026-07-08 with OpenCode 1.17.6.
 Throwing from `session.idle` does not block `opencode run`, so the primary adapter treats the event as passive and uses `client.session.promptAsync` to force one follow-up turn when `../../../bin/fm-turnend-guard.sh` returns 2.
 The follow-up was verified in the interactive TUI.
 `opencode run` can exit before displaying a queued follow-up, so the adapter steps aside in headless mode.
-On native Windows, the operational-input adapter runs its Bash helper through `bash`; macOS and Linux invoke it directly.
+On native Windows, the session-start nudge, turn-end guard, both PreToolUse checks, and operational-input adapter run their Bash helpers through `bash`; macOS and Linux invoke those helpers directly.
 
 The companion `.opencode/plugins/fm-primary-watch-arm.js` owns normal TUI watcher supervision, wakes it with `client.session.promptAsync`, and coordinates with the guard before a blind-turn follow-up.
 The PreToolUse-equivalent watcher-arm seatbelt blocks by throwing from `tool.execute.before`.
