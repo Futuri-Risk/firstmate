@@ -1,5 +1,7 @@
 name: Fleet dependency evidence
 on:
+  push:
+    branches: [feat/gitea-acpx-fleet]
   workflow_dispatch:
 permissions:
   contents: read
