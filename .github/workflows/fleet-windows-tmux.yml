@@ -2,7 +2,15 @@ name: Fleet Windows tmux compatibility
 on:
   push:
     branches: [feat/gitea-acpx-fleet]
-    paths: [.github/workflows/fleet-windows-tmux.yml, bin/fm-acpx-lib.sh, bin/fm-agent-process-lib.sh, bin/backends/tmux.sh, bin/fm-msys-foreground.py]
+    paths:
+      - .github/workflows/fleet-windows-tmux.yml
+      - bin/fm-acpx-lib.sh
+      - bin/fm-agent-process-lib.sh
+      - bin/fm-cursor-lib.sh
+      - bin/fm-tmux-lib.sh
+      - bin/backends/tmux.sh
+      - bin/fm-msys-foreground.py
+      - tests/fm-tmux-agent-liveness.test.sh
   workflow_dispatch:
 permissions:
   contents: read
@@ -40,38 +48,4 @@ jobs:
           done
           grep -qx 'FM_WINDOWS_TMUX_OK' "$TMUX_TMPDIR/capture"
           echo 'Detached Windows/MSYS2 tmux send/capture passed. No vendor-harness certification is claimed.'
-          printf '\n--- MSYS foreground-probe diagnostics ---\n'
-          tty=$(tmux display-message -p -t fleet-platform:worker '#{pane_tty}')
-          pane_pid=$(tmux display-message -p -t fleet-platform:worker '#{pane_pid}')
-          printf 'pane_tty=%s current_command=%s pane_pid=%s\n' "$tty" \
-            "$(tmux display-message -p -t fleet-platform:worker '#{pane_current_command}')" "$pane_pid"
-          printf 'pane ctty='; cat "/proc/$pane_pid/ctty" || true
-          printf 'pane pgid='; cat "/proc/$pane_pid/pgid" || true
-          printf 'fd0='; readlink "/proc/$pane_pid/fd/0" || true
-          PANE_TTY="$tty" PANE_PID="$pane_pid" python3 - <<'PY'
-          import os
-          for path in (os.environ["PANE_TTY"], f'/proc/{os.environ["PANE_PID"]}/fd/0'):
-              try:
-                  fd = os.open(path, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
-                  try:
-                      print(f'tcgetpgrp {path}: {os.tcgetpgrp(fd)}')
-                  finally:
-                      os.close(fd)
-              except Exception as exc:
-                  print(f'tcgetpgrp {path}: {type(exc).__name__}: {exc}')
-          PY
-          printf '%s\n' '--- ps -l idle ---'
-          ps -l || true
-          tmux send-keys -t fleet-platform:worker 'sleep 20' Enter
-          sleep 1
-          printf '%s\n' '--- ps -l foreground sleep ---'
-          ps -l || true
-          tmux send-keys -t fleet-platform:worker C-c
-          sleep 1
-          tmux send-keys -t fleet-platform:worker 'set -m; sleep 20 & disown' Enter
-          sleep 1
-          printf '%s\n' '--- ps -l background sleep ---'
-          ps -l || true
-          tmux send-keys -t fleet-platform:worker 'kill %1 2>/dev/null || true; set +m' Enter
-          printf '%s\n' '--- end diagnostics ---'
           bash tests/fm-tmux-agent-liveness.test.sh
