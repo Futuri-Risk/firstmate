@@ -46,6 +46,32 @@
 # shellcheck source=bin/fm-cursor-lib.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/fm-cursor-lib.sh"
 
+# Single owner of tmux foreground-process-group reads. Both the backend's
+# recovery classifier and tmux-specific composer identity consume this exact
+# primitive so platform handling cannot drift between them.
+fm_tmux_foreground_rows() {  # <target>
+  local target=$1 tty current pane_pid helper
+  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
+  [ -n "$tty" ] || return 0
+  case "$(uname -s)" in
+    MSYS*|CYGWIN*)
+      current=$(tmux display-message -p -t "$target" '#{pane_current_command}' 2>/dev/null) || return 0
+      pane_pid=$(tmux display-message -p -t "$target" '#{pane_pid}' 2>/dev/null) || return 0
+      [ -n "$current" ] && [ -n "$pane_pid" ] || return 0
+      helper="$(dirname -- "${BASH_SOURCE[0]}")/fm-msys-foreground.py"
+      python3 "$helper" "$tty" "$pane_pid" "$current"
+      ;;
+    *) LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null ;;
+  esac
+}
+
+fm_tmux_process_args() {  # <pid>
+  case "$(uname -s)" in
+    MSYS*|CYGWIN*) tr '\0' ' ' < "/proc/$1/cmdline" ;;
+    *) LC_ALL=C ps -p "$1" -o args= 2>/dev/null ;;
+  esac
+}
+
 
 # fm_tmux_strip_ghost: thin adapter over the shared, fleet-wide ghost extractor
 # fm_composer_strip_ghost (bin/fm-composer-lib.sh). It drops de-emphasised
@@ -100,21 +126,16 @@ fm_tmux_composer_caps() {
 # Prints "pi<TAB>idle" or "pi<TAB>working"; exits 1 when the pane is not a
 # live pi.
 fm_tmux_composer_identity() {  # <target>
-  local target=$1 tty pgid tpgid comm found=0 status
-  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || tty=
-  case "$tty" in
-    /dev/*)
-      while read -r _ pgid tpgid comm; do
-        [ -n "$comm" ] || continue
-        [ "$pgid" = "$tpgid" ] || continue
-        case "${comm##*/}" in
-          pi|pi-signed|pi-launcher|Pi) found=1 ;;
-        esac
-      done <<EOF
-$(LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null)
+  local target=$1 pgid tpgid comm found=0 status
+  while read -r _ pgid tpgid comm; do
+    [ -n "$comm" ] || continue
+    [ "$pgid" = "$tpgid" ] || continue
+    case "${comm##*/}" in
+      pi|pi-signed|pi-launcher|Pi) found=1 ;;
+    esac
+  done <<EOF
+$(fm_tmux_foreground_rows "$target")
 EOF
-      ;;
-  esac
   if [ "$found" -ne 1 ]; then
     comm=$(tmux display-message -p -t "$target" '#{pane_current_command}' 2>/dev/null) || comm=
     case "${comm##*/}" in
@@ -173,18 +194,14 @@ fm_tmux_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
 # matches fm_tmux_composer_identity, so a pane whose agent exited to a shell has
 # no Cursor foreground process and gets no reclassification.
 fm_tmux_pane_is_cursor() {  # <target>
-  local target=$1 tty pid pgid tpgid comm args argv0
-  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 1
-  case "$tty" in /dev/*) ;; *) return 1 ;; esac
+  local target=$1 pid pgid tpgid comm argv0
   while read -r pid pgid tpgid comm; do
     [ -n "$comm" ] || continue
     [ "$pgid" = "$tpgid" ] || continue
-    args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || args=
-    args=${args#"${args%%[![:space:]]*}"}
-    argv0=${args%%[[:space:]]*}
+    argv0=$(fm_cursor_argv0_for_pid "$pid" "$comm" 2>/dev/null) || argv0=
     fm_cursor_process_matches "$comm" '' "$argv0" && return 0
   done <<EOF
-$(LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null)
+$(fm_tmux_foreground_rows "$target")
 EOF
   return 1
 }
