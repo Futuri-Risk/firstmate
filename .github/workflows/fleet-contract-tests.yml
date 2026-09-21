@@ -99,7 +99,13 @@ jobs:
         run: |
           set -euo pipefail
           cat results/head.txt
-          for log in results/*.log; do
-            printf '\n--- %s ---\n' "$log"
-            tail -n 140 "$log"
-          done
+          shopt -s nullglob
+          logs=(results/*.log)
+          if [ "${#logs[@]}" -eq 0 ]; then
+            printf '\n(no log files were produced; the contract job stopped before log capture)\n'
+          else
+            for log in "${logs[@]}"; do
+              printf '\n--- %s ---\n' "$log"
+              tail -n 140 "$log"
+            done
+          fi
