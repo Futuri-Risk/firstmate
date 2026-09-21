@@ -246,10 +246,18 @@ fm_backend_tmux_current_command() {  # <target>
 # absent target from the client's active window rather than failing, so callers
 # must confirm exact window membership first, exactly as the classifier below
 # does, or they will describe some other pane entirely.
-fm_backend_tmux_foreground_rows() {  # <tty>
+fm_backend_tmux_foreground_rows() {  # <target>
+  local target=$1 tty current pane_pid
+  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
+  [ -n "$tty" ] || return 0
   case "$(uname -s)" in
-    MSYS*|CYGWIN*) python3 "$FM_BACKEND_LIB_DIR/fm-msys-foreground.py" "$1" ;;
-    *) LC_ALL=C ps -t "${1#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null ;;
+    MSYS*|CYGWIN*)
+      current=$(fm_backend_tmux_current_command "$target") || return 0
+      pane_pid=$(tmux display-message -p -t "$target" '#{pane_pid}' 2>/dev/null) || return 0
+      [ -n "$current" ] && [ -n "$pane_pid" ] || return 0
+      python3 "$FM_BACKEND_LIB_DIR/fm-msys-foreground.py" "$tty" "$pane_pid" "$current"
+      ;;
+    *) LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,tpgid=,comm= 2>/dev/null ;;
   esac
 }
 
@@ -261,10 +269,8 @@ fm_backend_tmux_process_args() {  # <pid>
 }
 
 fm_backend_tmux_foreground_comms() {  # <target>
-  local target=$1 tty pid pgid tpgid comm
-  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
-  [ -n "$tty" ] || return 0
-  fm_backend_tmux_foreground_rows "$tty" \
+  local target=$1 pid pgid tpgid comm
+  fm_backend_tmux_foreground_rows "$target" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
@@ -276,10 +282,8 @@ fm_backend_tmux_foreground_comms() {  # <target>
 # harness carries its identity in argv[1] rather than in its command name or
 # argv[0]; bin/fm-gemini-lib.sh owns what counts as evidence inside one.
 fm_backend_tmux_foreground_args() {  # <target>
-  local target=$1 tty pid pgid tpgid comm args
-  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
-  [ -n "$tty" ] || return 0
-  fm_backend_tmux_foreground_rows "$tty" \
+  local target=$1 pid pgid tpgid comm args
+  fm_backend_tmux_foreground_rows "$target" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
@@ -289,10 +293,8 @@ fm_backend_tmux_foreground_args() {  # <target>
 }
 
 fm_backend_tmux_foreground_pids() {  # <target>
-  local target=$1 tty pid pgid tpgid comm
-  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
-  [ -n "$tty" ] || return 0
-  fm_backend_tmux_foreground_rows "$tty" \
+  local target=$1 pid pgid tpgid comm
+  fm_backend_tmux_foreground_rows "$target" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
@@ -301,10 +303,8 @@ fm_backend_tmux_foreground_pids() {  # <target>
 }
 
 fm_backend_tmux_foreground_argv0s() {  # <target>
-  local target=$1 tty pid pgid tpgid comm args argv0
-  tty=$(tmux display-message -p -t "$target" '#{pane_tty}' 2>/dev/null) || return 0
-  [ -n "$tty" ] || return 0
-  fm_backend_tmux_foreground_rows "$tty" \
+  local target=$1 pid pgid tpgid comm args argv0
+  fm_backend_tmux_foreground_rows "$target" \
     | while read -r pid pgid tpgid comm; do
         [ -n "$comm" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
