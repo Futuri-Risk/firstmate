@@ -1,7 +1,6 @@
 name: Fleet dependency evidence
+# Broken experimental branch: automatic runs disabled to stop notification noise.
 on:
-  push:
-    branches: [feat/gitea-acpx-fleet]
   workflow_dispatch:
 permissions:
   contents: read
