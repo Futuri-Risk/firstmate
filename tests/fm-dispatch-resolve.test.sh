@@ -89,6 +89,8 @@ write_quota() {  # <path> <cursor spendPriority> [<claude all_models spendPriori
       { "scope": "all_models", "status": "known", "effectivePercentRemaining": 64, "runway": { "status": "through_reset" }, "selection": { "spendPriority": 0.4 } } ] } },
     { "provider": "google", "state": { "status": "fresh" }, "quotaSemantics": { "status": "known", "effectiveAvailability": [
       { "scope": "all_models", "status": "known", "effectivePercentRemaining": 72, "runway": { "status": "through_reset" }, "selection": { "spendPriority": 0.3 } } ] } },
+    { "provider": "zai", "state": { "status": "fresh" }, "quotaSemantics": { "status": "known", "effectiveAvailability": [
+      { "scope": "all_models", "status": "known", "effectivePercentRemaining": 88, "runway": { "status": "through_reset" }, "selection": { "spendPriority": 0.95 } } ] } },
     { "provider": "kimi", "state": { "status": "unknown" }, "quotaSemantics": { "status": "unknown", "effectiveAvailability": [] } }
   ]
 }
@@ -317,6 +319,14 @@ reset_log
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 assert_contains "$out" 'candidate: gemini:gemini-3.8-flash-high  provider=google  scope=all_models  remaining=72%  spendPriority=0.3  runway=through_reset  -> eligible' "Gemini resolves through its explicit provider"
 assert_contains "$out" "  profile: --harness 'gemini' --model 'gemini-3.8-flash-high'" "Gemini is a typed verified dispatch harness"
+
+ZCODE_RULE="$TMP_ROOT/zcode-rule.json"
+printf '%s\n' '{"rules":[{"when":"ZCode implementation work.","use":[{"harness":"acp:zcode","model":"glm-5.3","provider":"zai"},{"harness":"codex","model":"gpt-5.6-sol"}]}]}' > "$ZCODE_RULE"
+cp "$ZCODE_RULE" "$RULES"
+reset_log
+TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+assert_contains "$out" 'candidate: acp:zcode:glm-5.3  provider=zai  scope=all_models  remaining=88%  spendPriority=0.95  runway=through_reset  -> eligible' "ZCode ACP uses its explicitly configured quota provider"
+assert_contains "$out" "  profile: --harness 'acp:zcode' --model 'glm-5.3'" "a dispatch rule can resolve directly to a ZCode ACP worker profile"
 
 cp "$ROOT/docs/examples/crew-dispatch.json" "$RULES"
 cat > "$RESPONSE" <<'JSON'
