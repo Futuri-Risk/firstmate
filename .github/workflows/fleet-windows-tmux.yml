@@ -49,17 +49,17 @@ jobs:
           printf 'pane pgid='; cat "/proc/$pane_pid/pgid" || true
           printf 'fd0='; readlink "/proc/$pane_pid/fd/0" || true
           PANE_TTY="$tty" PANE_PID="$pane_pid" python3 - <<'PY'
-import os
-for path in (os.environ["PANE_TTY"], f'/proc/{os.environ["PANE_PID"]}/fd/0'):
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
-        try:
-            print(f'tcgetpgrp {path}: {os.tcgetpgrp(fd)}')
-        finally:
-            os.close(fd)
-    except Exception as exc:
-        print(f'tcgetpgrp {path}: {type(exc).__name__}: {exc}')
-PY
+          import os
+          for path in (os.environ["PANE_TTY"], f'/proc/{os.environ["PANE_PID"]}/fd/0'):
+              try:
+                  fd = os.open(path, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
+                  try:
+                      print(f'tcgetpgrp {path}: {os.tcgetpgrp(fd)}')
+                  finally:
+                      os.close(fd)
+              except Exception as exc:
+                  print(f'tcgetpgrp {path}: {type(exc).__name__}: {exc}')
+          PY
           printf '%s\n' '--- ps -l idle ---'
           ps -l || true
           tmux send-keys -t fleet-platform:worker 'sleep 20' Enter
