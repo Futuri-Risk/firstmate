@@ -12,7 +12,7 @@ fm_acpx_harness_valid() {
 }
 
 fm_acpx_pid_matches() {
-  local pid=${1:-} arg count=0 executable= script=
+  local pid=${1:-} arg count=0 executable='' script=''
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
   [ -r "/proc/$pid/cmdline" ] || return 1
   while IFS= read -r -d '' arg; do
