@@ -75,10 +75,16 @@ class ProjectJourney(unittest.TestCase):
         self.url = f"http://127.0.0.1:{self.server.server_port}/team/widget"
         git("config", "--global", "url." + self.remote.as_uri() + ".insteadOf", self.url + ".git", env=self.env)
 
-    def invoke(self):
+    def invoke(self, *extra):
         return subprocess.run([sys.executable, str(ROOT / "bin/fm-project-onboard.py"),
-                               "--project", "widget", "--url", self.url], env=self.env,
+                               "--project", "widget", "--url", self.url, *extra], env=self.env,
                               capture_output=True, text=True, timeout=90)
+
+    def make_mirror(self):
+        mirror = self.base / "mirror.git"
+        git("clone", "--bare", self.url + ".git", mirror, env=self.env)
+        git("config", "remote.origin.url", self.url + ".git", cwd=mirror, env=self.env)
+        return mirror
 
     def test_onboard_and_repeat_preserve_one_secondmate_and_open_backlog(self):
         first = self.invoke()
@@ -98,6 +104,33 @@ class ProjectJourney(unittest.TestCase):
         registry = (self.home / "data/secondmates.md").read_text()
         self.assertEqual(sum(line.startswith("- project-widget ") for line in registry.splitlines()), 1)
         self.assertEqual(git("config", "--get", "remote.origin.url", cwd=self.home / "projects/widget"), self.url + ".git")
+
+    def test_current_mirror_is_used_and_gitea_origin_is_restored(self):
+        mirror = self.make_mirror()
+        git("tag", "mirror-only-evidence", cwd=mirror, env=self.env)
+        result = self.invoke("--mirror", str(mirror))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        clone = self.home / "projects/widget"
+        self.assertEqual(git("tag", "--list", "mirror-only-evidence", cwd=clone, env=self.env),
+                         "mirror-only-evidence")
+        self.assertEqual(git("config", "--get", "remote.origin.url", cwd=clone, env=self.env),
+                         self.url + ".git")
+        receipt = json.loads((self.home / "config/gitea-projects/widget.json").read_text())
+        self.assertEqual(receipt["mirror"], str(mirror.resolve()))
+        self.assertEqual(receipt["mirror_state"], "fresh")
+        self.assertTrue(receipt["mirror_checked_at"])
+
+    def test_failed_mirror_refresh_is_recorded_stale_and_refuses_clone(self):
+        mirror = self.make_mirror()
+        offline = self.base / "upstream-offline.git"
+        self.remote.rename(offline)
+        result = self.invoke("--mirror", str(mirror))
+        self.assertNotEqual(result.returncode, 0)
+        receipt = json.loads((self.home / "config/gitea-projects/widget.json").read_text())
+        self.assertEqual(receipt["mirror"], str(mirror.resolve()))
+        self.assertEqual(receipt["mirror_state"], "stale")
+        self.assertTrue(receipt["mirror_checked_at"])
+        self.assertFalse((self.home / "projects/widget").exists())
 
     def test_existing_dirty_and_untracked_work_is_preserved(self):
         clone = self.home / "projects/widget"
