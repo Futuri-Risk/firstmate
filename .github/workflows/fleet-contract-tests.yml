@@ -10,7 +10,7 @@ permissions:
   actions: read
 concurrency:
   group: fleet-contract-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   contracts:
     runs-on: ubuntu-22.04
@@ -56,6 +56,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/fleet-results"
           cp "$RUNNER_TEMP/fleet-deps/source-pins.txt" "$RUNNER_TEMP/fleet-results/"
           git rev-parse HEAD > "$RUNNER_TEMP/fleet-results/head.txt"
+      - name: Canonical lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin/fm-lint.sh
       - name: Public behavior and native regression
         shell: bash
         run: |
