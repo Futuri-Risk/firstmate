@@ -40,4 +40,24 @@ jobs:
           done
           grep -qx 'FM_WINDOWS_TMUX_OK' "$TMUX_TMPDIR/capture"
           echo 'Detached Windows/MSYS2 tmux send/capture passed. No vendor-harness certification is claimed.'
+          printf '\n--- MSYS foreground-probe diagnostics ---\n'
+          tty=$(tmux display-message -p -t fleet-platform:worker '#{pane_tty}')
+          printf 'pane_tty=%s current_command=%s pane_pid=%s\n' "$tty" \
+            "$(tmux display-message -p -t fleet-platform:worker '#{pane_current_command}')" \
+            "$(tmux display-message -p -t fleet-platform:worker '#{pane_pid}')"
+          set +e
+          python3 bin/fm-msys-foreground.py "$tty"
+          probe_rc=$?
+          set -e
+          printf 'fm-msys-foreground rc=%s\n' "$probe_rc"
+          printf '%s\n' '--- ps snapshot ---'
+          ps -ef || true
+          printf '%s\n' '--- /proc tty/process hints ---'
+          for p in /proc/[0-9]*; do
+            [ -r "$p/stat" ] || continue
+            case "$(cat "$p/stat" 2>/dev/null || true)" in
+              *bash*|*tmux*|*python*) printf '%s: ' "$p"; cat "$p/stat" 2>/dev/null || true ;;
+            esac
+          done
+          printf '%s\n' '--- end diagnostics ---'
           bash tests/fm-tmux-agent-liveness.test.sh
