@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: fleet-windows-tmux-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   windows-tmux:
     runs-on: windows-latest
